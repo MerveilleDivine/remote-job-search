@@ -67,7 +67,7 @@ with gr.Blocks(title="Remote Job Search") as demo:
     download = gr.DownloadButton("Download CSV", value=None, visible=False)
 
     def on_search(query: str, page_count: int, country_code: str, only_remote: bool):
-        message, dataframe = search_jobs(query, int(page_count), country_code, only_remote)
+        message, dataframe = search_jobs(query, page_count, country_code, only_remote)
         has_results = dataframe is not None and not dataframe.empty
         return (
             message,

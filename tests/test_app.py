@@ -10,7 +10,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "code"))
 
-from app import create_download, search_jobs  # noqa: E402
+from app import create_download, on_search, search_jobs  # noqa: E402
 from scraper import JSearchError  # noqa: E402
 
 
@@ -70,6 +70,16 @@ class AppTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertTrue(Path(first).is_file())
         self.assertTrue(Path(second).is_file())
+
+    def test_gui_invalid_page_count_returns_error_and_clears_results(self):
+        for pages in (None, 1.5, float("inf")):
+            with self.subTest(pages=pages), patch.dict("os.environ", {"API_KEY": "test"}):
+                message, results, download = on_search("engineer", pages, "", True)
+                self.assertTrue(message.startswith("Error: Pages must be a positive integer."))
+                self.assertFalse(results["visible"])
+                self.assertIsNone(results["value"])
+                self.assertFalse(download["visible"])
+                self.assertIsNone(download["value"])
 
 
 if __name__ == "__main__":

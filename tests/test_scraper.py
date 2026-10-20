@@ -50,6 +50,11 @@ class ValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot be empty"):
             validate_query("   ")
 
+    def test_non_text_query_is_rejected(self):
+        for value in (None, 42, True):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "must be text"):
+                validate_query(value)
+
     def test_country_is_optional_but_must_be_two_letters(self):
         self.assertEqual(validate_country(" US "), "us")
         self.assertEqual(validate_country(""), "")
@@ -64,6 +69,11 @@ class ValidationTests(unittest.TestCase):
             validate_positive_int(1.5, "Pages")
         with self.assertRaisesRegex(ValueError, "greater than 10"):
             validate_positive_int(11, "Pages", maximum=10)
+
+    def test_non_finite_page_counts_raise_validation_errors(self):
+        for value in (float("inf"), float("-inf"), float("nan")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                validate_positive_int(value, "Pages")
 
 
 class NormalizationTests(unittest.TestCase):
@@ -94,6 +104,16 @@ class NormalizationTests(unittest.TestCase):
         ]
 
         self.assertEqual(len(deduplicate_jobs(jobs)), 2)
+
+    def test_url_identity_preserves_case_sensitive_paths_and_queries(self):
+        links = [
+            "https://EXAMPLE.com/jobs/ABC?id=A",
+            "https://example.com/jobs/ABC?id=A",
+            "https://example.com/jobs/abc?id=A",
+            "https://example.com/jobs/ABC?id=a",
+        ]
+        jobs = [{"Link": link} for link in links]
+        self.assertEqual(deduplicate_jobs(jobs), [jobs[0], jobs[2], jobs[3]])
 
 
 class ClientTests(unittest.TestCase):
@@ -155,6 +175,19 @@ class ClientTests(unittest.TestCase):
 
 
 class ExportTests(unittest.TestCase):
+    def test_csv_neutralizes_formulas_without_mutating_results(self):
+        for value in ("=1+1", "+1+1", "-1+1", "@SUM(1)", "  =1+1", "\t=1+1"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as directory:
+                job = normalize_job({"job_title": "Engineer"})
+                job["Company"] = value
+                destination = Path(directory) / "jobs.csv"
+                save_jobs_to_csv([job], destination, announce=False)
+                with destination.open(encoding="utf-8", newline="") as file:
+                    exported = next(csv.DictReader(file))
+                self.assertEqual(exported["Company"], "'" + value)
+                self.assertEqual(exported["Job Title"], "Engineer")
+                self.assertEqual(job["Company"], value)
+
     def test_default_filename_is_portable(self):
         self.assertEqual(default_output_filename("C++ / Backend"), "c_backend_jobs.csv")
 

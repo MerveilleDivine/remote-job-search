@@ -12,6 +12,7 @@ import os
 import re
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 from dotenv import load_dotenv
@@ -45,7 +46,9 @@ class ConfigurationError(JSearchError):
 
 def validate_query(query: str) -> str:
     """Return a normalized search query or raise a helpful error."""
-    normalized = " ".join(str(query).split())
+    if not isinstance(query, str):
+        raise ValueError("Search keywords must be text.")
+    normalized = " ".join(query.split())
     if not normalized:
         raise ValueError("Search keywords cannot be empty.")
     return normalized
@@ -66,7 +69,7 @@ def validate_positive_int(value: Any, name: str, maximum: int | None = None) -> 
 
     try:
         number = int(value)
-    except (TypeError, ValueError) as error:
+    except (TypeError, ValueError, OverflowError) as error:
         raise ValueError(f"{name} must be a positive integer.") from error
 
     if number < 1 or str(value).strip() not in {str(number), f"{number}.0"}:
@@ -122,8 +125,17 @@ def deduplicate_jobs(jobs: Sequence[dict[str, str]]) -> list[dict[str, str]]:
     seen: set[tuple[str, ...]] = set()
 
     for job in jobs:
-        link = job.get("Link", "").strip().casefold()
+        link = job.get("Link", "").strip()
         if link:
+            # URL hosts are case-insensitive; paths and query values are not.
+            try:
+                parsed = urlsplit(link)
+                link = urlunsplit(
+                    (parsed.scheme.lower(), parsed.netloc.lower(),
+                     parsed.path, parsed.query, parsed.fragment)
+                )
+            except ValueError:
+                pass  # Preserve a malformed source URL rather than losing the listing.
             identity = ("link", link)
         else:
             identity = (
@@ -260,7 +272,16 @@ def save_jobs_to_csv(
     with destination.open(mode="w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=CSV_FIELDS, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(jobs)
+        # API text is untrusted. Quoting alone does not stop spreadsheet formulas.
+        writer.writerows(
+            {
+                field: "'" + value
+                if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@"))
+                else value
+                for field, value in job.items()
+            }
+            for job in jobs
+        )
 
     if announce:
         print(f"Saved {len(jobs)} jobs to {destination}")
