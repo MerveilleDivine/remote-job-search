@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="./assets/readme-banner.svg" width="100%" alt="Remote Job Search" />
-</p>
-
 # Remote Job Search
 
 I built a Python client to search job listings from the command line or a browser, filter remote roles, and download the results as CSV. Both interfaces use the same JSearch client, so validation, retries, normalization, and duplicate handling stay consistent.
